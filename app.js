@@ -11,6 +11,9 @@ var bodyParser = require('body-parser');
 var fs = require('fs');
 var routes = require('./routes/index');
 var users = require('./routes/users');
+const io = require('socket.io')();
+const redis = require('redis');
+const redisClient = redis.createClient();
 
 var app = express();
 
@@ -23,13 +26,29 @@ app.use(bodyParser.urlencoded({
 }));
 app.use(cookieParser());
 
-
-// get config
-
-// pretend to return favicon
-app.get('/favicon.ico', function (req, res) {
-	res.send(200);
-});
+const GAME_DATA = {
+	players: [
+	  {
+		role: 'KING',
+		isTurn: true,
+	  },
+	  {
+		role: 'QUEEN',
+		isTurn: false,
+	  },
+	  {
+		role: 'POLICE',
+		isTurn: false,
+	  },
+	  {
+		role: 'THIEF',
+		isTurn: false
+	  },
+	],
+	other: {
+		totalPlayers: 0,
+	}
+  };
 
 // Set the ENV variable to point to the right environment
 
@@ -137,6 +156,10 @@ app.use(function (req, res, next) {
 	next(err);
 });
 
+const port = 8003;
+io.listen(port);
+console.log('listening on port ', port);
+
 // error handlers
 
 // development error handler
@@ -160,5 +183,123 @@ app.use(function (err, req, res, next) {
 		error: {}
 	});
 });
+
+
+// socket Connection details
+// io.on('connection', (client) => {
+// client.on('subscribeToTimer', (interval) => {
+// 		console.log('client is subscribing to timer with interval ', interval);
+// 		setInterval(() => {
+// 		client.emit('timer', new Date());
+// 		}, interval);
+// 	});
+// });
+
+// when user joins, add him to room
+io.sockets.on('connection', function (socket) {
+	socket.on('join', function (data) {
+		socket.join(data.username);
+		console.log(io.sockets.adapter.rooms);
+		createGame(data.gameId, data.instanceId, { username: data.username } );
+	});
+});
+
+
+
+const socketPort = 8003;
+io.listen(socketPort);
+console.log('listening on port ', socketPort);
+
+
+// redis 
+
+redisClient.on('connect', function() {
+    console.log('Redis client connected');
+});
+
+redisClient.on('error', function (err) {
+    console.log('Redis: Something went wrong ' + err);
+});
+
+// getting data from redis
+
+const getCachedData = (key) => {
+	redisClient.get(key, function (error, result) {
+		if (error) {
+			console.log(error);
+			return null;
+		}
+		return JSON.parse(result);
+	});
+}
+
+//setting data at redis
+const setCacheData = (key, data) => {
+	redisClient.set(key, JSON.stringify(data) );
+}
+
+// create game 
+const createGame = ( gameId, instanceId, playerInfo ) => {
+	const gameInstance = `${gameId}_${instanceId}`;
+	console.log("creategame")
+	redisClient.get(gameInstance, function (error, savedGameInstanceData) {
+		let gameData;
+
+		if (error || !savedGameInstanceData) {
+	console.log("error")
+
+			error && console.log(error);
+			const gameInstanceData = Object.assign(GAME_DATA, { gameId, instanceId } );
+			gameData = createGameData( gameInstanceData, playerInfo );
+
+			setCacheData(gameInstance, gameData );
+
+		}
+		else { 
+			const savedGameData = JSON.parse(savedGameInstanceData);
+			gameData = createGameData( savedGameData, playerInfo );
+			setCacheData(gameInstance, gameData );
+		}
+		io.to(playerInfo.username).emit('game_created', gameData);
+
+	});
+
+}
+
+const createGameData = ( gameData, playerInfo ) => {
+	if(gameData.other.totalPlayers === 4 ){
+
+		return false;
+	}
+	else{
+		// already exists check??
+		if( userExists(gameData.players, playerInfo.username) ) {
+			return gameData;
+		}
+		else {
+			
+		( gameData.other.totalPlayers === 0 ) ? ( gameData.players = gameSuffle(gameData.players) ) : '';
+		gameData.players[gameData.other.totalPlayers].userStatus = 'online';
+		gameData.players[gameData.other.totalPlayers].username = playerInfo.username;
+		gameData.other.totalPlayers += 1;
+		return gameData;
+		}
+	}
+}
+
+const userExists = (players, username) => {
+	let isUserExist = players.find(player => { return player.username === username } );
+	return isUserExist;
+}
+
+// suffling game data
+const gameSuffle = (array) => {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]]; // eslint-disable-line no-param-reassign
+	}
+	return array;
+}
+
 
 module.exports = app;
