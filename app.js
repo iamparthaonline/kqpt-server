@@ -10,10 +10,13 @@ var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 var fs = require('fs');
 var routes = require('./routes/index');
-var users = require('./routes/users');
+var game = require('./routes/game');
+var clone = require('./utilities/clone');
 const io = require('socket.io')();
 const redis = require('redis');
 const redisClient = redis.createClient();
+
+const { saveGameDetailsToDB } = require('./controllers/game');
 
 var app = express();
 
@@ -29,26 +32,54 @@ app.use(cookieParser());
 const GAME_DATA = {
 	players: [
 	  {
-		role: 'KING',
+		role: "KING",
 		isTurn: true,
+		isRevealed: true
 	  },
 	  {
-		role: 'QUEEN',
+		role: "QUEEN",
 		isTurn: false,
+		isRevealed: false
 	  },
 	  {
-		role: 'POLICE',
+		role: "POLICE",
 		isTurn: false,
+		isRevealed: false
 	  },
 	  {
-		role: 'THIEF',
-		isTurn: false
+		role: "THIEF",
+		isTurn: false,
+		isRevealed: false
 	  },
 	],
 	other: {
 		totalPlayers: 0,
 	}
   };
+
+  const ROLE_MAP = {
+	"KING": {
+		"CORRECT_CHOICE_SCORE": 1000,
+		"CHOICE": "QUEEN",
+		"WRONG_CHOICE_SCORE": 500
+	},
+	"QUEEN": {
+		"CORRECT_CHOICE_SCORE": 750,
+		"CHOICE": "POLICE",
+		"WRONG_CHOICE_SCORE": 375
+	},
+	"POLICE": {
+		"CORRECT_CHOICE_SCORE": 500,
+		"CHOICE": "THIEF",
+		"WRONG_CHOICE_SCORE": 250
+	}
+  };
+
+  const SOCKET_LIST = {
+	  "JOIN_GAME": "JOIN_GAME",
+	  "GAME_UPDATE": "GAME_UPDATE",
+	  "GAME_MOVE": "GAME_MOVE"
+  }
 
 // Set the ENV variable to point to the right environment
 
@@ -147,7 +178,8 @@ app.use(require("morgan")('short', {
 }));
 
 app.use('/', routes);
-app.use('/users', users(express, logger, app.config));
+app.use('/game', game(express, logger, app.config));
+
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
@@ -185,22 +217,15 @@ app.use(function (err, req, res, next) {
 });
 
 
-// socket Connection details
-// io.on('connection', (client) => {
-// client.on('subscribeToTimer', (interval) => {
-// 		console.log('client is subscribing to timer with interval ', interval);
-// 		setInterval(() => {
-// 		client.emit('timer', new Date());
-// 		}, interval);
-// 	});
-// });
-
 // when user joins, add him to room
 io.sockets.on('connection', function (socket) {
-	socket.on('join', function (data) {
+	socket.on( SOCKET_LIST.JOIN_GAME, function (data) {
 		socket.join(data.username);
-		console.log(io.sockets.adapter.rooms);
 		createGame(data.gameId, data.instanceId, { username: data.username } );
+	});
+
+	socket.on( SOCKET_LIST.GAME_MOVE, function (data) {
+		gameMovePlayed( data );
 	});
 });
 
@@ -223,82 +248,234 @@ redisClient.on('error', function (err) {
 
 // getting data from redis
 
-const getCachedData = (key) => {
+const getCachedData = (key, callback) => {
 	redisClient.get(key, function (error, result) {
 		if (error) {
-			console.log(error);
 			return null;
 		}
-		return JSON.parse(result);
+		callback( JSON.parse(result) );
 	});
 }
 
 //setting data at redis
 const setCacheData = (key, data) => {
-	redisClient.set(key, JSON.stringify(data) );
+	key && redisClient.set(key, JSON.stringify(data) );
 }
 
 // create game 
 const createGame = ( gameId, instanceId, playerInfo ) => {
-	const gameInstance = `${gameId}_${instanceId}`;
-	console.log("creategame")
-	redisClient.get(gameInstance, function (error, savedGameInstanceData) {
-		let gameData;
+	console.log("hi");
 
-		if (error || !savedGameInstanceData) {
-	console.log("error")
+	const gameKey = `GAME_${gameId}`;
+	redisClient.get(gameKey, function (error, savedGameInstanceData) {
+		let gameData;
+		if (error || !savedGameInstanceData ) {
+			console.log("error");
 
 			error && console.log(error);
-			const gameInstanceData = Object.assign(GAME_DATA, { gameId, instanceId } );
+			const gameInstanceData = Object.assign( { gameId, instanceId }, GAME_DATA );
 			gameData = createGameData( gameInstanceData, playerInfo );
 
-			setCacheData(gameInstance, gameData );
+			setCacheData(gameKey, { instances: [ gameData ] } );
+			// saveGameDetailsToDB(gameKey, { instances: [ gameData ] } );
 
+			// || !savedGameInstanceData.instances[ instanceId ]
 		}
 		else { 
-			const savedGameData = JSON.parse(savedGameInstanceData);
-			gameData = createGameData( savedGameData, playerInfo );
-			setCacheData(gameInstance, gameData );
-		}
-		io.to(playerInfo.username).emit('game_created', gameData);
+			console.log("present");
 
+			const savedGameData = JSON.parse( savedGameInstanceData );
+			gameData = createGameData( savedGameData.instances[ savedGameData.instances.length - 1 ], playerInfo );
+			savedGameData.instances[ savedGameData.instances.length - 1 ] = gameData;
+			setCacheData(gameKey, savedGameData );
+			// saveGameDetailsToDB(gameKey, savedGameData );
+
+		}
+		publishGameData(gameData);
+		console.log(savedGameInstanceData)
 	});
 
 }
 
 const createGameData = ( gameData, playerInfo ) => {
-	if(gameData.other.totalPlayers === 4 ){
+	const totalPlayers = gameData.other.totalPlayers;
+	const userAlreadyExists = userExists(gameData.players, playerInfo.username);
+	if(totalPlayers === 4 && !userAlreadyExists){
 
 		return false;
 	}
 	else{
-		// already exists check??
-		if( userExists(gameData.players, playerInfo.username) ) {
+		// already exists check
+		if( userAlreadyExists ) {
 			return gameData;
 		}
 		else {
 			
-		( gameData.other.totalPlayers === 0 ) ? ( gameData.players = gameSuffle(gameData.players) ) : '';
-		gameData.players[gameData.other.totalPlayers].userStatus = 'online';
-		gameData.players[gameData.other.totalPlayers].username = playerInfo.username;
-		gameData.other.totalPlayers += 1;
-		return gameData;
+			( totalPlayers === 0 ) ? ( gameData.players = gameShuffle(gameData.players) ) : '';
+			gameData.players[totalPlayers].userStatus = 'online';
+			gameData.players[totalPlayers].username = playerInfo.username;
+			if ( gameData.players[totalPlayers].isTurn ) {
+				gameData.other.activeUser = playerInfo.username;
+				gameData.other.status = {
+					message: `${ playerInfo.username } is playing ! `,
+					type: 'game',
+				}
+			}
+			gameData.other.totalPlayers += 1;
+			return gameData;
 		}
 	}
 }
 
-const userExists = (players, username) => {
+const userExists = ( players, username ) => {
 	let isUserExist = players.find(player => { return player.username === username } );
 	return isUserExist;
 }
 
-// suffling game data
-const gameSuffle = (array) => {
+// shuffling game data
+const gameShuffle = (array) => {
     for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]]; // eslint-disable-line no-param-reassign
+        [array[i], array[j]] = [array[j], array[i]];
 	}
 	return array;
+};
+
+const publishGameData = ( gameData ) => {
+
+	const gameDataObject = Object.assign( {}, gameData );
+	for( let i = 0; i < gameDataObject.players.length; i++ ) {
+		const player = gameDataObject.players[i];
+		if( player.username ) {
+
+			const data = createPlayerSpecificPublishData( clone(gameDataObject), player.username );
+			io.to( player.username ).emit( SOCKET_LIST.GAME_UPDATE, data );
+		}
+	}
+};
+
+const createPlayerSpecificPublishData = ( gameData, playerId ) => {
+	for( let j = 0; j < gameData.players.length; j++ ) {
+		let playerData = gameData.players[j];
+
+		if( !( playerData.username === playerId || playerData.isRevealed ) || !playerData.username ){
+			gameData.players[j].role = undefined;
+		}
+		if( playerData.username === playerId ){
+			gameData.other.isMove = playerData.isTurn;  
+		}
+	}
+
+	return gameData;
+};
+
+// game move played
+const gameMovePlayed = ( data ) => {
+
+	const gameKey = `GAME_${data.gameId}`;
+
+	redisClient.get(gameKey, function (error, savedGameInstanceData) {
+		//check whether he belongs to same game 
+		// change the instances data and save 
+		if( error ) {
+			console.log(error);
+		}
+		else {
+			savedGameInstanceData = JSON.parse(savedGameInstanceData);
+
+			const savedGameData = savedGameInstanceData.instances[ savedGameInstanceData.instances.length - 1 ];
+			const result = checkTurnResult( data.chosenPlayer, data.username, savedGameData.players );
+			const updatedGameData = setMoveData( savedGameData, data.username, result.activeRole, data.chosenPlayer, result.targetRole, result );
+
+			savedGameInstanceData.instances[ savedGameInstanceData.instances.length - 1 ] = updatedGameData;
+		
+			setCacheData(gameKey, savedGameInstanceData );
+			// saveGameDetailsToDB(gameKey, savedGameData );
+			
+			publishGameData( updatedGameData );
+		}
+	});
+};
+
+
+/**
+ * Checking wheather it is correct or not 
+ * @param {String} chosenPlayer 
+ * @param {String} username 
+ * @param {String} players 
+ */
+const checkTurnResult = ( chosenPlayer, username, players ) => {
+	let activePlayer, targetPlayer;
+	for( let i = 0; i < players.length; i++ ) {
+		if( players[i].username === username ) {
+			activePlayer = players[i];
+		}
+		if( players[i].username === chosenPlayer ) {
+			targetPlayer = players[i];
+		}
+	}
+	
+	if ( ROLE_MAP[activePlayer.role].CHOICE === targetPlayer.role ) {
+		return {
+			result: true,
+			activeRole: activePlayer.role,
+			targetRole: targetPlayer.role,
+			score: ROLE_MAP[activePlayer.role].CORRECT_CHOICE_SCORE
+		}
+	}
+	else {
+		return {
+			result: false,
+			activeRole: activePlayer.role,
+			targetRole: targetPlayer.role,
+			score: ROLE_MAP[activePlayer.role].WRONG_CHOICE_SCORE
+		}
+	}
+};
+/**
+ * Update the gamedata after an user has given his move.
+ * @param {Object} gameData 
+ * @param {String} activePlayer 
+ * @param {String} targetPlayer 
+ * @param {Object} turnResult 
+ */
+const setMoveData = ( gameData, activePlayer, activeRole, targetPlayer, targetRole, turnResult ) => {
+let updatedPlayers = [];
+updatedPlayers = gameData.players.map( ( player, index ) => {
+		if( player.username === activePlayer ){
+			player.isRevealed = turnResult.result;
+			player.isTurn = false;
+			if ( !turnResult.result ) 
+				( player.role = targetRole );
+			return player;
+		}
+		else if( player.username === targetPlayer ){
+			player.isTurn = true;
+			player.isRevealed = true;
+			if ( !turnResult.result ) 
+				( player.role = activeRole );
+			return player;
+		}
+		else {
+			return player;
+		}
+	});
+	const gameMoveData = {
+		players: updatedPlayers,
+		gameId: gameData.gameId,
+		instanceId: gameData.instanceId,
+		other: {
+			status: {
+				message: `${ targetPlayer } is playing ! `,
+				type: 'game',
+			},
+			activeUser: targetPlayer,
+			totalPlayers: gameData.other.totalPlayers
+		}
+
+	};
+	console.log(gameMoveData)
+	return gameMoveData;
 }
 
 
