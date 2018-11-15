@@ -16,7 +16,13 @@ const io = require('socket.io')();
 const redis = require('redis');
 const redisClient = redis.createClient();
 
-const { saveGameDetailsToDB } = require('./controllers/game');
+redisClient.on('connect', function () {
+    console.log('redis connected');
+}).on('error', function (error) {
+    console.log(error);
+});
+
+const { saveGameDetailsToDB } = require('./utilities/saveGameDataToDB');
 
 var app = express();
 
@@ -291,8 +297,9 @@ const createGame = ( gameId, instanceId, playerInfo ) => {
 			// saveGameDetailsToDB(gameKey, savedGameData );
 
 		}
+			// saveGameDetailsToDB(gameKey, savedGameData );
+		
 		publishGameData(gameData);
-		console.log(savedGameInstanceData)
 	});
 
 }
