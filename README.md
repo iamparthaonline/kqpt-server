@@ -1,5 +1,6 @@
-# express-boilerplate
-A bare bones REST API using Express, which uses Winston for logging
+# KQPT - Server 
+
+Node Server with Socket and redis configuration for an Indian multiplayer game.
 
 ## Install 
 `npm install`
