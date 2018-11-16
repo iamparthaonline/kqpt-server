@@ -83,7 +83,6 @@ redisClient.on('connect', function () {
 //     console.log('Redis: Something went wrong ' + err);
 // });
 
-const { saveGameDetailsToDB } = require('./utilities/saveGameDataToDB');
 
 var app = express();
 
