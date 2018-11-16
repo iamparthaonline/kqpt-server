@@ -13,8 +13,8 @@ var routes = require('./routes/index');
 var game = require('./routes/game');
 var clone = require('./utilities/clone');
 const io = require('socket.io')();
-const redis = require('redis');
-const redisClient = redis.createClient();
+// const redis = require('redis');
+// const redisClient = redis.createClient();
 var LocalStorage = require('node-localstorage').LocalStorage;
 const localStorage = new LocalStorage('./storage');
 
@@ -73,11 +73,11 @@ const setCacheData = (key, data) => {
 // const redisClient = redis.createClient({ url: `redis://:${redisObj.redisKey}@${redisObj.redisHost}:${redisObj.redisPort}` }).on('error', (err) => console.error('ERR:REDIS:', err));
 					  
 
-redisClient.on('connect', function () {
-    console.log(`redis connected ${redisClient.connected}`);
-}).on('error', function (error) {
-    console.log(error);
-});
+// redisClient.on('connect', function () {
+//     console.log(`redis connected ${redisClient.connected}`);
+// }).on('error', function (error) {
+//     console.log(error);
+// });
 
 // redisClient.on('error', function (err) {
 //     console.log('Redis: Something went wrong ' + err);
