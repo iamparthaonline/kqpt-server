@@ -15,12 +15,73 @@ var clone = require('./utilities/clone');
 const io = require('socket.io')();
 const redis = require('redis');
 const redisClient = redis.createClient();
+var LocalStorage = require('node-localstorage').LocalStorage;
+const localStorage = new LocalStorage('./storage');
+
+
+const getCachedData = (key, callback) => {
+	const data = localStorage && localStorage.getItem( key );
+	callback( !data, JSON.parse( data ) );
+}
+
+const setCacheData = (key, data) => {
+	localStorage && localStorage.setItem( key, JSON.stringify( data ) );
+}
+
+
+
+// const MongoClient = require('mongodb').MongoClient;
+// const url = 'ds263493.mlab.com:63493/kqpt';
+// const mongoCredintials = {
+//   user: 'game',
+//   password: 'game00'
+// };
+// const mongoUrl = 'mongodb://'+mongoCredintials.user+':'+mongoCredintials.password+'@'+url;
+
+// MongoClient.connect(mongoUrl, function(err, db) {
+// 	if(err){
+// 		console.log(err)
+// 	}
+// 	else {
+// 		console.log('mongo Connected')
+// 		const collection = db.collection('game');
+// 		console.log(db.serverConfig)
+// 		db.collection("game").insertOne({"hello": 1234}, function(err, res) {
+// 			if (err) throw err;
+// 			console.log("1 document inserted");
+// 		});
+
+// 		collection.find({}).toArray(function(err, docs) {
+// 			console.log(err)
+// 			console.log("Found the following records");
+// 			console.log(docs);
+// 		});
+// 	}
+// 	// db.collection("game_data").replaceOne( {"game": 111 }, {game: 112}, {upsert: true});
+// });
+
+// "redis://redis-18288.c90.us-east-1-3.ec2.cloud.redislabs.com:18288"
+// redisClient.auth('PEtE2qRpXvH8AzrXQV6vITuoqjiRgisN', function (err) {
+//     if (err) throw err;
+// })
+
+// const redisObj = {
+// 					"redisHost": "redis-18288.c90.us-east-1-3.ec2.cloud.redislabs.com",
+// 					"redisPort": 18288,
+// 					"redisKey": "PEtE2qRpXvH8AzrXQV6vITuoqjiRgisN"
+// 				};
+// const redisClient = redis.createClient({ url: `redis://:${redisObj.redisKey}@${redisObj.redisHost}:${redisObj.redisPort}` }).on('error', (err) => console.error('ERR:REDIS:', err));
+					  
 
 redisClient.on('connect', function () {
-    console.log('redis connected');
+    console.log(`redis connected ${redisClient.connected}`);
 }).on('error', function (error) {
     console.log(error);
 });
+
+// redisClient.on('error', function (err) {
+//     console.log('Redis: Something went wrong ' + err);
+// });
 
 const { saveGameDetailsToDB } = require('./utilities/saveGameDataToDB');
 
@@ -242,38 +303,13 @@ io.listen(socketPort);
 console.log('listening on port ', socketPort);
 
 
-// redis 
 
-redisClient.on('connect', function() {
-    console.log('Redis client connected');
-});
-
-redisClient.on('error', function (err) {
-    console.log('Redis: Something went wrong ' + err);
-});
-
-// getting data from redis
-
-const getCachedData = (key, callback) => {
-	redisClient.get(key, function (error, result) {
-		if (error) {
-			return null;
-		}
-		callback( JSON.parse(result) );
-	});
-}
-
-//setting data at redis
-const setCacheData = (key, data) => {
-	key && redisClient.set(key, JSON.stringify(data) );
-}
 
 // create game 
 const createGame = ( gameId, instanceId, playerInfo ) => {
-	console.log("hi");
 
 	const gameKey = `GAME_${gameId}`;
-	redisClient.get(gameKey, function (error, savedGameInstanceData) {
+	getCachedData(gameKey, function (error, savedGameInstanceData) {
 		let gameData;
 		if (error || !savedGameInstanceData ) {
 			console.log("error");
@@ -290,7 +326,7 @@ const createGame = ( gameId, instanceId, playerInfo ) => {
 		else { 
 			console.log("present");
 
-			const savedGameData = JSON.parse( savedGameInstanceData );
+			const savedGameData = savedGameInstanceData;
 			gameData = createGameData( savedGameData.instances[ savedGameData.instances.length - 1 ], playerInfo );
 			savedGameData.instances[ savedGameData.instances.length - 1 ] = gameData;
 			setCacheData(gameKey, savedGameData );
@@ -381,14 +417,13 @@ const gameMovePlayed = ( data ) => {
 
 	const gameKey = `GAME_${data.gameId}`;
 
-	redisClient.get(gameKey, function (error, savedGameInstanceData) {
+	getCachedData(gameKey, function (error, savedGameInstanceData) {
 		//check whether he belongs to same game 
 		// change the instances data and save 
 		if( error ) {
 			console.log(error);
 		}
 		else {
-			savedGameInstanceData = JSON.parse(savedGameInstanceData);
 
 			const savedGameData = savedGameInstanceData.instances[ savedGameInstanceData.instances.length - 1 ];
 			const result = checkTurnResult( data.chosenPlayer, data.username, savedGameData.players );
