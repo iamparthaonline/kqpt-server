@@ -11,7 +11,7 @@ var http = require('http');
 /**
  * Get port from environment and store in Express.
  */
-var port = normalizePort(app.config.APP_PORT || '2222');
+var port = normalizePort(process.env.PORT || app.config.APP_PORT || '2222');
 app.set('port', port);
 
 /**
@@ -85,5 +85,6 @@ function onListening() {
   var bind = typeof addr === 'string'
     ? 'pipe ' + addr
     : 'port ' + addr.port;
+  console.log(" App is working on port " + port)
   app.logger.debug('Listening on ' + bind);
 }

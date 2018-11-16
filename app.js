@@ -254,9 +254,6 @@ app.use(function (req, res, next) {
 	next(err);
 });
 
-const port = 8003;
-io.listen(port);
-console.log('listening on port ', port);
 
 // error handlers
 
@@ -299,7 +296,7 @@ io.sockets.on('connection', function (socket) {
 
 const socketPort = 8003;
 io.listen(socketPort);
-console.log('listening on port ', socketPort);
+console.log('socket listening on port ', socketPort);
 
 
 
