@@ -10,7 +10,7 @@ var clone = require('./utilities/clone');
 const io = require('socket.io')(http);
 var LocalStorage = require('node-localstorage').LocalStorage;
 const localStorage = new LocalStorage('./storage');
-
+var cors = require('cors')
 
 const getCachedData = (key, callback) => {
 	const data = localStorage && localStorage.getItem( key );
@@ -24,7 +24,7 @@ const setCacheData = (key, data) => {
 
 
 
-var app = express();
+var app = express(cors());
 
 // view engine setup (not included)
 
