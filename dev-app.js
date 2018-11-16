@@ -5,7 +5,7 @@
 var express = require('express');
 var cors = require('cors')
 var app = express(cors());
-var http = require('http').createServer(app);
+var http = require('http');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 var clone = require('./utilities/clone');
@@ -358,7 +358,18 @@ updatedPlayers = gameData.players.map( ( player, index ) => {
 }
 
 const APP_PORT = (process.env.PORT || 3000);
-http.listen( APP_PORT, function(){
+http.createServer(function(req,res){
+	// Set CORS headers
+	res.setHeader('Access-Control-Allow-Origin', '*');
+	res.setHeader('Access-Control-Request-Method', '*');
+	res.setHeader('Access-Control-Allow-Methods', 'OPTIONS, GET');
+	res.setHeader('Access-Control-Allow-Headers', '*');
+	if ( req.method === 'OPTIONS' ) {
+		res.writeHead(200);
+		res.end();
+		return;
+	}
+}).listen( APP_PORT, function(){
 	console.log('KQPT server is listening on '+ APP_PORT);
 });
 
