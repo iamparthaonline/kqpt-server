@@ -3,6 +3,7 @@
 "use strict";
 
 var express = require('express');
+var cors = require('cors')
 var app = express(cors());
 var http = require('http').createServer(app);
 var cookieParser = require('cookie-parser');
@@ -11,7 +12,6 @@ var clone = require('./utilities/clone');
 const io = require('socket.io')(http);
 var LocalStorage = require('node-localstorage').LocalStorage;
 const localStorage = new LocalStorage('./storage');
-var cors = require('cors')
 
 const getCachedData = (key, callback) => {
 	const data = localStorage && localStorage.getItem( key );
@@ -361,3 +361,28 @@ const APP_PORT = (process.env.PORT || 3000);
 http.listen( APP_PORT, function(){
 	console.log('KQPT server is listening on '+ APP_PORT);
 });
+
+// http.createServer((req, res) => {
+// 	const headers = {
+// 	  'Access-Control-Allow-Origin': '*',
+// 	  'Access-Control-Allow-Methods': 'OPTIONS, POST, GET',
+// 	  'Access-Control-Max-Age': 2592000, // 30 days
+// 	  /** add other headers as per requirement */
+// 	};
+  
+// 	if (req.method === 'OPTIONS') {
+// 	  res.writeHead(204, headers);
+// 	  res.end();
+// 	  return;
+// 	}
+  
+// 	if (['GET', 'POST'].indexOf(req.method) > -1) {
+// 	  res.writeHead(200, headers);
+// 	  res.end('Hello World');
+// 	  return;
+// 	}
+  
+// 	res.writeHead(405, headers);
+// 	res.end(`${req.method} is not allowed for the request.`);
+
+//   }).listen(APP_PORT);
