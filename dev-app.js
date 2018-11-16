@@ -3,6 +3,7 @@
 "use strict";
 
 var express = require('express');
+var app = express(cors());
 var http = require('http').createServer(app);
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
@@ -24,7 +25,6 @@ const setCacheData = (key, data) => {
 
 
 
-var app = express(cors());
 
 // view engine setup (not included)
 
